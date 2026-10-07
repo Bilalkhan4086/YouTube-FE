@@ -72,15 +72,31 @@ export function sitemap(origin) {
  if (!origin) return '';
  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/','/blog/',...articles.map(articlePath)].map(path=>`<url><loc>${escape(origin+path)}</loc>${path==='/'?'':`<lastmod>${updated}</lastmod>`}</url>`).join('')}</urlset>\n`;
 }
-export const robots = origin => `User-agent: *\nAllow: /\n${origin?`Sitemap: ${origin}/sitemap.xml\n`:''}`;
+export const robots = origin => `# Public pages and assets are crawlable.\nUser-agent: *\nAllow: /\nDisallow: /api/\n${origin?`\nSitemap: ${origin}/sitemap.xml\n`:''}`;
+export function llms(origin = '') {
+ return `# Wavely\n\n> Wavely is a web-based YouTube to MP3 and MP4 converter with practical guides about audio quality, downloads, devices, and troubleshooting.\n\nUse recordings you own or are authorized to download. Wavely is independent and is not affiliated with YouTube or Google. The converter requires JavaScript; the guides are available as static HTML.\n\n## Main pages\n\n- [Converter](${origin}/): Convert an individual video to MP3 audio or MP4 video.\n- [Wavely Journal](${origin}/blog/): Browse ${articles.length} practical guides.\n\n${categories.map(category=>`## ${category}\n\n${articles.filter(a=>a.category===category).map(a=>`- [${a.title}](${origin}${articlePath(a)}): ${a.description}`).join('\n')}`).join('\n\n')}\n\n## Optional\n\n- [Full guide text](${origin}/llms-full.txt): The published guides in one Markdown document.\n${origin?`- [XML sitemap](${origin}/sitemap.xml): Canonical website URLs.\n`:''}`;
+}
+export function llmsFull(origin = '') {
+ return `# Wavely published guides\n\nThe following text is generated from the same content as the public journal.\n\n${articles.map(a=>`## ${a.title}\n\nSource: ${origin}${articlePath(a)}\nUpdated: ${a.updated}\n\n${a.description}\n\n${a.body.replace(/^## /gm,'### ').replace(/\]\(\/(?!\/)([^)]*)\)/g,(_,path)=>`](${origin}/${path})`)}`).join('\n\n---\n\n')}\n`;
+}
+function crawlerFiles(origin) {
+ return new Map([
+  ['/robots.txt', {type:'text/plain', body:robots(origin)}],
+  ['/llms.txt', {type:'text/plain', body:llms(origin)}],
+  ['/llms-full.txt', {type:'text/plain', body:llmsFull(origin)}],
+  ['/sitemap.xml', {type:'application/xml', body:sitemap(origin)}],
+ ]);
+}
 export function blogPlugin(origin = '') {
+ const files = crawlerFiles(origin);
  const seoMiddleware = (req, res, next) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
-  if (pathname !== '/sitemap.xml' && pathname !== '/robots.txt') return next();
-  const missing = pathname === '/sitemap.xml' && !origin;
+  const file = files.get(pathname);
+  if (!file) return next();
+  const missing = !file.body;
   res.statusCode = missing ? 404 : 200;
-  res.setHeader('Content-Type', pathname === '/sitemap.xml' && !missing ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8');
-  res.end(missing ? 'Set SITE_URL to generate sitemap.xml.\n' : pathname === '/sitemap.xml' ? sitemap(origin) : robots(origin));
+  res.setHeader('Content-Type', `${missing ? 'text/plain' : file.type}; charset=utf-8`);
+  res.end(missing ? 'Set SITE_URL to generate sitemap.xml.\n' : file.body);
  };
  const middleware = (req, res, next) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -97,8 +113,7 @@ export function blogPlugin(origin = '') {
   this.emitFile({type:'asset',fileName:'blog/index.html',source:renderIndex(origin)});
   for(const article of articles) this.emitFile({type:'asset',fileName:`blog/${article.slug}/index.html`,source:renderArticle(article,origin)});
   this.emitFile({type:'asset',fileName:'404.html',source:render404(origin)});
-  this.emitFile({type:'asset',fileName:'robots.txt',source:robots(origin)});
-  if(origin) this.emitFile({type:'asset',fileName:'sitemap.xml',source:sitemap(origin)});
-  else this.warn('Set SITE_URL to your production origin to emit canonical URLs and sitemap.xml. Local blog pages remain available.');
- },transformIndexHtml(html){return html.replace('</head>',`${origin?`<link rel="canonical" href="${escape(origin)}/">`:''}</head>`).replace('<div id="root"></div>','<div id="root"></div><noscript><p><a href="/blog/">Read Wavely’s 30 YouTube to MP3 guides</a>. The converter requires JavaScript.</p></noscript>');}};
+  for (const [path, file] of files) if (file.body) this.emitFile({type:'asset',fileName:path.slice(1),source:file.body});
+  if(!origin) this.warn('Set SITE_URL to your production origin to emit canonical URLs and sitemap.xml. Local blog pages remain available.');
+ },transformIndexHtml(html){return html.replace('</head>',`${origin?`<link rel="canonical" href="${escape(origin)}/"><meta property="og:url" content="${escape(origin)}/">`:''}</head>`).replace('<div id="root"></div>','<div id="root"></div><noscript><p><a href="/blog/">Read Wavely’s 30 YouTube to MP3 guides</a>. The converter requires JavaScript.</p></noscript>');}};
 }

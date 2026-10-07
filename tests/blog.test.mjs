@@ -16,7 +16,7 @@ test('development serves XML and robots without falling back to the React HTML p
  for (const base of [origin, '']) {
   const handlers=[];
   blogPlugin(base).configureServer({middlewares:{use(handler){handlers.push(handler);}}});
-  for (const path of ['/sitemap.xml', '/robots.txt']) {
+  for (const path of ['/sitemap.xml', '/robots.txt', '/llms.txt', '/llms-full.txt']) {
    const headers={};
    const response={setHeader(name,value){headers[name]=value;},end(body){this.body=body;}};
    handlers[0]({url:path},response,()=>assert.fail('SEO request fell through'));
@@ -28,6 +28,24 @@ test('development serves XML and robots without falling back to the React HTML p
    if (path==='/robots.txt' && base) assert.ok(response.body.includes(`Sitemap: ${origin}/sitemap.xml`));
   }
  }
+});
+test('crawler files contain valid production links and published guide text', () => {
+ const emitted=[];
+ blogPlugin(origin).generateBundle.call({emitFile(file){emitted.push(file);},warn(){assert.fail('Unexpected missing origin');}});
+ const files=new Map(emitted.map(file=>[file.fileName,file.source]));
+ assert.match(files.get('robots.txt'), /User-agent: \*\nAllow: \/\nDisallow: \/api\//);
+ const allowed=new Set(['/', '/blog/', '/llms-full.txt', '/sitemap.xml', ...articles.map(articlePath)]);
+ for (const [,url] of files.get('llms.txt').matchAll(/\]\(([^)]+)\)/g)) {
+  assert.equal(new URL(url).origin,origin);
+  assert.ok(allowed.has(new URL(url).pathname),url);
+ }
+ for (const article of articles) {
+  assert.ok(files.get('llms.txt').includes(origin+articlePath(article)));
+  assert.ok(files.get('llms-full.txt').includes(`Source: ${origin}${articlePath(article)}`));
+  assert.ok(files.get('llms-full.txt').includes(article.description));
+ }
+ assert.ok(!files.get('llms-full.txt').includes('](/'));
+ assert.ok(files.has('sitemap.xml'));
 });
 test('30 distinct, complete guides have unique URLs, descriptions, targets, and valid related reading', () => {
  assert.equal(articles.length,30);

@@ -72,6 +72,19 @@ Do not apply a blanket SPA rewrite to missing `/blog/` pages. The existing conve
 
 The generated not-found page is noindex. Hash aliases redirect in the client because fragments are not sent to the server. Normal article links use crawlable paths directly.
 
+## Crawler files
+
+The Vite plugin in `scripts/blog.mjs` generates these files at the site root during every build and serves them during development:
+
+- `/robots.txt`: allows public pages and assets, excludes `/api/` from crawling, and references the absolute sitemap URL. Robots rules are not access control.
+- `/sitemap.xml`: the 32 canonical HTML pages, using `SITE_URL` or the Vercel production origin.
+- `/llms.txt`: a Markdown overview and categorized links to all published guides.
+- `/llms-full.txt`: the same published guide content in one Markdown document, with source URLs and revision dates.
+
+The conventional filenames are `robots.txt` and `llms.txt`, not `robot.txt` or `llm.txt`. Edit the generator or article source instead of adding duplicate files in `public/`. Generated output is in `dist/`. Homepage Open Graph and Twitter metadata live in `index.html`; its canonical and Open Graph URL are supplied during the build.
+
+After deployment, check these endpoints on the live domain and submit only `/sitemap.xml` in Search Console. The llms.txt format is an optional proposal, not a Google ranking requirement. [Google requires no special AI text files](https://developers.google.com/search/docs/appearance/ai-features) for its AI search features. Discovery and indexing remain separate from ranking.
+
 ## Editorial research and maintenance
 
 Product claims were checked against the current frontend and backend code: MP3 options, MP4 output limit, job recovery, temporary retention, supported URL normalization, and unsupported batch/trim controls. In particular, a watch URL with a video ID plus playlist context is normalized to the individual video; a playlist-only URL is rejected.
