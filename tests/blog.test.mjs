@@ -1,8 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {articles} from '../content/articles.mjs';
-import {articlePath, renderArticle, renderIndex, render404, renderMarkdown, sitemap, siteOrigin, wordCount} from '../scripts/blog.mjs';
+import {articlePath, renderArticle, renderIndex, render404, renderMarkdown, sitemap, siteOrigin, configuredSiteOrigin, blogPlugin, wordCount} from '../scripts/blog.mjs';
 const origin = 'https://wavely.example';
+test('Vercel uses the production domain and rejects missing or local deployment origins', () => {
+ assert.equal(configuredSiteOrigin({}), '');
+ assert.equal(configuredSiteOrigin({SITE_URL:'http://localhost:3000'}), 'http://localhost:3000');
+ assert.equal(configuredSiteOrigin({VERCEL:'1', VERCEL_PROJECT_PRODUCTION_URL:'wavely.example', VERCEL_URL:'preview.example'}), origin);
+ assert.equal(configuredSiteOrigin({VERCEL:'1', SITE_URL:origin, VERCEL_PROJECT_PRODUCTION_URL:'other.example'}), origin);
+ for (const SITE_URL of ['', 'http://localhost:3000', 'https://localhost', 'https://127.0.0.1', 'https://[::1]', 'http://wavely.example']) {
+  assert.throws(()=>configuredSiteOrigin({VERCEL:'1', SITE_URL}));
+ }
+});
+test('development serves XML and robots without falling back to the React HTML page', () => {
+ for (const base of [origin, '']) {
+  const handlers=[];
+  blogPlugin(base).configureServer({middlewares:{use(handler){handlers.push(handler);}}});
+  for (const path of ['/sitemap.xml', '/robots.txt']) {
+   const headers={};
+   const response={setHeader(name,value){headers[name]=value;},end(body){this.body=body;}};
+   handlers[0]({url:path},response,()=>assert.fail('SEO request fell through'));
+   assert.equal(response.statusCode, path==='/sitemap.xml' && !base ? 404 : 200);
+   if (path==='/sitemap.xml' && base) {
+    assert.match(headers['Content-Type'],/^application\/xml/);
+    assert.equal((response.body.match(/<loc>/g)||[]).length,32);
+   }
+   if (path==='/robots.txt' && base) assert.ok(response.body.includes(`Sitemap: ${origin}/sitemap.xml`));
+  }
+ }
+});
 test('30 distinct, complete guides have unique URLs, descriptions, targets, and valid related reading', () => {
  assert.equal(articles.length,30);
  for (const key of ['slug','title','description','keyword']) assert.equal(new Set(articles.map(a=>a[key])).size,30,key);

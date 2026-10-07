@@ -43,7 +43,15 @@ SITE_URL=https://your-domain.com npm run build
 
 Alternatively put it in the frontend's `.env` file. This is a build-time setting. Use the actual canonical HTTPS origin, without a path, query, or fragment. The deployment must serve the app at the domain root.
 
-With `SITE_URL` configured, the build emits self-canonical URLs, absolute structured-data URLs, homepage canonical, and a 32-URL `sitemap.xml` (home, index, 30 articles). `robots.txt` references that sitemap. Without it, local development still works, but the build warns and omits canonical URLs and the sitemap instead of publishing an invented domain. Set this before production launch.
+With `SITE_URL` configured, the build emits self-canonical URLs, absolute structured-data URLs, homepage canonical, and a 32-URL `sitemap.xml` (home, index, 30 articles). `robots.txt` references that sitemap. Outside Vercel, a build without an origin warns and omits canonical URLs and the sitemap. Development serves these endpoints directly; a missing origin returns 404 for the sitemap instead of the React homepage.
+
+### Vercel
+
+Set `SITE_URL=https://youtube-to-mp3.live` in the project's Production environment variables and redeploy when changing it. If `SITE_URL` is empty, the build uses Vercel's `VERCEL_PROJECT_PRODUCTION_URL` (enable system environment variables in project settings). It deliberately does not use the temporary deployment URL. Vercel builds fail if the origin is missing, localhost, or non-HTTPS. Keep localhost settings in the ignored `.env.local` file for development only.
+
+Publish the complete `dist` output. Preserve the existing static blog routing; do not add a catch-all rewrite to `index.html`. Check that `/sitemap.xml` returns XML with status 200, `/robots.txt` references the public sitemap, and article URLs return their own HTML and canonical URLs.
+
+In Google Search Console, submit `https://youtube-to-mp3.live/sitemap.xml` under the matching domain/URL-prefix property. Check the sitemap's status, last-read timestamp, and discovered-page count separately from the indexed-page count. Use URL Inspection on a blog article and run the live test if indexing is missing. A valid sitemap helps discovery but does not guarantee indexing; the Pages report gives Google's reason for excluding a URL.
 
 Deploy the entire `dist/` directory, including `blog/`, `blog.css`, `blog.js`, `robots.txt`, and `404.html`. Configure directory indexes so `/blog/slug/` serves `/blog/slug/index.html`. Redirect known directory URLs without a trailing slash to their slash form. Unknown blog paths must return an actual 404, not the React homepage with status 200. The Vite development and preview servers already enforce this for `/blog` paths; production hosting needs the equivalent setting.
 

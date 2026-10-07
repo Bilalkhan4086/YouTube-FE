@@ -6,6 +6,15 @@ export function siteOrigin(value = '') {
  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('SITE_URL must be an http(s) origin without a path, credentials, query, or hash.');
  return url.origin;
 }
+export function configuredSiteOrigin(env = {}) {
+ const origin = siteOrigin(env.SITE_URL?.trim() || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : ''));
+ if (env.VERCEL === '1') {
+  if (!origin) throw new Error('Set SITE_URL to your public HTTPS origin or enable Vercel system environment variables before deploying. A sitemap is required.');
+  const url = new URL(origin);
+  if (url.protocol !== 'https:' || url.hostname === 'localhost' || url.hostname.endsWith('.localhost') || url.hostname === '[::1]' || /^127\./.test(url.hostname)) throw new Error('SITE_URL must be a public HTTPS origin for Vercel deployments, not a localhost URL.');
+ }
+ return origin;
+}
 export const escape = (value) => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const articlePath = article => `/blog/${article.slug}/`;
 export const wordCount = article => plainText(article.body).split(/\s+/).filter(Boolean).length;
@@ -63,7 +72,16 @@ export function sitemap(origin) {
  if (!origin) return '';
  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['/','/blog/',...articles.map(articlePath)].map(path=>`<url><loc>${escape(origin+path)}</loc>${path==='/'?'':`<lastmod>${updated}</lastmod>`}</url>`).join('')}</urlset>\n`;
 }
+export const robots = origin => `User-agent: *\nAllow: /\n${origin?`Sitemap: ${origin}/sitemap.xml\n`:''}`;
 export function blogPlugin(origin = '') {
+ const seoMiddleware = (req, res, next) => {
+  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  if (pathname !== '/sitemap.xml' && pathname !== '/robots.txt') return next();
+  const missing = pathname === '/sitemap.xml' && !origin;
+  res.statusCode = missing ? 404 : 200;
+  res.setHeader('Content-Type', pathname === '/sitemap.xml' && !missing ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8');
+  res.end(missing ? 'Set SITE_URL to generate sitemap.xml.\n' : pathname === '/sitemap.xml' ? sitemap(origin) : robots(origin));
+ };
  const middleware = (req, res, next) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
   if (!/^\/blog(?:\/|$)/.test(pathname)) return next();
@@ -75,11 +93,11 @@ export function blogPlugin(origin = '') {
   res.setHeader('Content-Type','text/html; charset=utf-8');
   res.end(normalized==='/blog/'?renderIndex(origin):article?renderArticle(article,origin):render404(origin));
  };
- return {name:'wavely-static-blog',configureServer(server){server.middlewares.use(middleware);},configurePreviewServer(server){server.middlewares.use(middleware);},generateBundle(){
+ return {name:'wavely-static-blog',configureServer(server){server.middlewares.use(seoMiddleware);server.middlewares.use(middleware);},configurePreviewServer(server){server.middlewares.use(middleware);},generateBundle(){
   this.emitFile({type:'asset',fileName:'blog/index.html',source:renderIndex(origin)});
   for(const article of articles) this.emitFile({type:'asset',fileName:`blog/${article.slug}/index.html`,source:renderArticle(article,origin)});
   this.emitFile({type:'asset',fileName:'404.html',source:render404(origin)});
-  this.emitFile({type:'asset',fileName:'robots.txt',source:`User-agent: *\nAllow: /\n${origin?`Sitemap: ${origin}/sitemap.xml\n`:''}`});
+  this.emitFile({type:'asset',fileName:'robots.txt',source:robots(origin)});
   if(origin) this.emitFile({type:'asset',fileName:'sitemap.xml',source:sitemap(origin)});
   else this.warn('Set SITE_URL to your production origin to emit canonical URLs and sitemap.xml. Local blog pages remain available.');
  },transformIndexHtml(html){return html.replace('</head>',`${origin?`<link rel="canonical" href="${escape(origin)}/">`:''}</head>`).replace('<div id="root"></div>','<div id="root"></div><noscript><p><a href="/blog/">Read Wavely’s 30 YouTube to MP3 guides</a>. The converter requires JavaScript.</p></noscript>');}};
