@@ -87,6 +87,12 @@ function crawlerFiles(origin) {
   ['/sitemap.xml', {type:'application/xml', body:sitemap(origin)}],
  ]);
 }
+// Available before React loads, and still useful if scripts fail or are disabled.
+export function renderHomepageFallback() {
+ const featured = ['youtube-to-mp3-guide', 'choose-audio-quality', 'youtube-to-mp3-not-working']
+  .map(slug => articles.find(article => article.slug === slug));
+ return `<main class="section"><h1>Wavely — YouTube to MP3</h1><p>Convert YouTube videos to MP3 or MP4. Choose your audio quality, preview the result, and save your file.</p><noscript><p>The converter requires JavaScript. You can read all our guides without it.</p></noscript><nav aria-label="Conversion guides"><h2>Good reads for better listening</h2><ul>${featured.map(article => `<li><a href="${articlePath(article)}">${escape(article.title)}</a></li>`).join('')}</ul><a href="/blog/">Browse all ${articles.length} guides</a></nav></main>`;
+}
 export function blogPlugin(origin = '') {
  const files = crawlerFiles(origin);
  const seoMiddleware = (req, res, next) => {
@@ -115,5 +121,5 @@ export function blogPlugin(origin = '') {
   this.emitFile({type:'asset',fileName:'404.html',source:render404(origin)});
   for (const [path, file] of files) if (file.body) this.emitFile({type:'asset',fileName:path.slice(1),source:file.body});
   if(!origin) this.warn('Set SITE_URL to your production origin to emit canonical URLs and sitemap.xml. Local blog pages remain available.');
- },transformIndexHtml(html){return html.replace('</head>',`${origin?`<link rel="canonical" href="${escape(origin)}/"><meta property="og:url" content="${escape(origin)}/">`:''}</head>`).replace('<div id="root"></div>','<div id="root"></div><noscript><p><a href="/blog/">Read Wavely’s 30 YouTube to MP3 guides</a>. The converter requires JavaScript.</p></noscript>');}};
+ },transformIndexHtml(html){return html.replace('</head>',`${origin?`<link rel="canonical" href="${escape(origin)}/"><meta property="og:url" content="${escape(origin)}/">`:''}</head>`).replace('<div id="root"></div>',`<div id="root">${renderHomepageFallback()}</div>`);}};
 }
